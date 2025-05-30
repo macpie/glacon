@@ -1,0 +1,23 @@
+[package]
+name = "data-project"
+version = "0.1.0"
+description = ""
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0"
+arrow = "55"
+arrow-schema = "55"
+bytes = "1.10"
+chrono = "0.4.39"
+iceberg = { git = "https://github.com/apache/iceberg-rust.git", branch = "main" }
+iceberg-catalog-rest = { git = "https://github.com/apache/iceberg-rust.git", branch = "main" }
+iceberg-catalog-sql = { git = "https://github.com/apache/iceberg-rust.git", branch = "main" }
+parquet = "55"
+rand = "0.9"
+reqwest = "0.12"
+serde_json = "1.0"
+tokio = { version = "1.45", features = ["full"] }
+tracing = "0.1"
+tracing-subscriber = "0.3"
+uuid = "1.17"
