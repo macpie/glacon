@@ -1,10 +1,10 @@
 use data_project::{
-    data::{generate_record_batch, insert},
+    data::{Order, create_batches, insert},
     setup,
 };
 use iceberg::{Catalog, TableIdent};
 use rand::Rng;
-use std::sync::Arc;
+use std::{sync::Arc, thread::sleep, time::Duration};
 use tokio::{sync::mpsc, task};
 
 #[tokio::main]
@@ -16,20 +16,27 @@ async fn main() -> anyhow::Result<()> {
     let catalog = setup(namespace.clone(), table_name.clone()).await?;
     let catalog_ref = Arc::new(catalog);
 
-    let (tx, mut rx) = mpsc::unbounded_channel::<u32>();
+    let (tx, mut rx) = mpsc::unbounded_channel::<Vec<Order>>();
 
     // Spawn a task to send messages
     let tx1 = tx.clone();
     task::spawn(async move {
         let mut rng = rand::rng();
         loop {
-            let n = rng.random_range(1..10_000_000);
-            tx1.send(n).unwrap();
+            let mut orders = vec![];
+
+            for _ in 0..rng.random_range(1..1_000_000) {
+                orders.push(Order::generate());
+            }
+
+            tx1.send(orders).unwrap();
+
+            sleep(Duration::from_secs(rng.random_range(1..5)));
         }
     });
 
-    while let Some(n) = rx.recv().await {
-        tracing::info!("Got msg {n}");
+    while let Some(orders) = rx.recv().await {
+        tracing::info!("got {} orders", orders.len());
 
         let catalog = catalog_ref.clone();
         let table = catalog
@@ -42,9 +49,9 @@ async fn main() -> anyhow::Result<()> {
 
         let schema: Arc<arrow_schema::Schema> =
             Arc::new(table.metadata().current_schema().as_ref().try_into()?);
-        let batch = generate_record_batch(schema.clone(), n).await?;
+        let batches = create_batches(schema, orders).await?;
 
-        insert(&catalog, table, batch).await?;
+        insert(&catalog, table, batches).await?;
     }
 
     Ok(())

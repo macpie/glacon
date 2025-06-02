@@ -16,10 +16,42 @@ use iceberg::{
 use iceberg_catalog_rest::RestCatalog;
 use parquet::file::properties::WriterProperties;
 use rand::Rng;
-use std::sync::Arc;
+use std::{cmp::min, sync::Arc};
 use uuid::Uuid;
 
-pub async fn insert(catalog: &RestCatalog, table: Table, batch: RecordBatch) -> anyhow::Result<()> {
+pub struct Order {
+    id: i32,
+    customer_id: i32,
+    amount: f32,
+    ts: i64,
+}
+
+impl Order {
+    pub fn generate() -> Self {
+        let mut rng = rand::rng();
+        let random_day = rng.random_range(1..=31);
+        let date = NaiveDate::from_ymd_opt(2025, 5, random_day).unwrap();
+        let random_hour = rng.random_range(1..=23);
+        let random_min = rng.random_range(0..=59);
+        let random_sec = rng.random_range(0..=59);
+        let time = NaiveTime::from_hms_opt(random_hour, random_min, random_sec).unwrap();
+        let dt = NaiveDateTime::new(date, time);
+        let ts = dt.and_utc().timestamp_micros();
+
+        Self {
+            id: rng.random_range(1..10_000_000),
+            customer_id: rng.random_range(1..10_000_000),
+            amount: rng.random_range(1.0..10000.0),
+            ts,
+        }
+    }
+}
+
+pub async fn insert(
+    catalog: &RestCatalog,
+    table: Table,
+    batches: Vec<RecordBatch>,
+) -> anyhow::Result<()> {
     let location_generator = DefaultLocationGenerator::new(table.metadata().clone())?;
     let file_name_generator = DefaultFileNameGenerator::new(
         "orders".to_string(),
@@ -27,7 +59,6 @@ pub async fn insert(catalog: &RestCatalog, table: Table, batch: RecordBatch) -> 
         iceberg::spec::DataFileFormat::Parquet,
     );
 
-    // Create a parquet file writer builder. The parameter can get from table.
     let parquet_writer_builder = ParquetWriterBuilder::new(
         WriterProperties::default(),
         table.metadata().current_schema().clone(),
@@ -43,11 +74,17 @@ pub async fn insert(catalog: &RestCatalog, table: Table, batch: RecordBatch) -> 
         ))])),
         0,
     );
-    let mut data_file_writer = data_file_writer_builder.build().await?;
 
-    data_file_writer.write(batch).await?;
-    // Close the write and it will return data files back
-    let data_files = data_file_writer.close().await?;
+    let mut data_files = vec![];
+
+    for batch in batches {
+        let data_file_writer_builder = data_file_writer_builder.clone();
+        let mut data_file_writer = data_file_writer_builder.build().await?;
+        data_file_writer.write(batch).await?;
+        let closed = data_file_writer.close().await?;
+
+        data_files.extend(closed);
+    }
 
     let txn = Transaction::new(&table);
     let mut action = txn.fast_append(None, vec![])?;
@@ -59,41 +96,102 @@ pub async fn insert(catalog: &RestCatalog, table: Table, batch: RecordBatch) -> 
     Ok(())
 }
 
-pub async fn generate_record_batch(
+pub async fn create_batches(
     schema: Arc<arrow_schema::Schema>,
-    max: u32,
-) -> anyhow::Result<RecordBatch> {
+    orders: Vec<Order>,
+) -> anyhow::Result<Vec<RecordBatch>> {
+    let batch_size = 100_000;
+    let mut batches = Vec::new();
+
+    let max = orders.len();
+    let mut start = 0;
+
+    while start < max {
+        let end = usize::min(start + batch_size, max);
+        let chunk = &orders[start..end];
+
+        let mut ids = Vec::with_capacity(chunk.len());
+        let mut customer_ids = Vec::with_capacity(chunk.len());
+        let mut amounts = Vec::with_capacity(chunk.len());
+        let mut tss = Vec::with_capacity(chunk.len());
+
+        for order in chunk {
+            ids.push(order.id);
+            customer_ids.push(order.customer_id);
+            amounts.push(order.amount);
+            tss.push(order.ts);
+        }
+
+        let batch = RecordBatch::try_new(
+            schema.clone(),
+            vec![
+                Arc::new(Int32Array::from(ids)),
+                Arc::new(Int32Array::from(customer_ids)),
+                Arc::new(Float32Array::from(amounts)),
+                Arc::new(TimestampMicrosecondArray::from(tss)),
+            ],
+        )?;
+
+        batches.push(batch);
+        start = end;
+    }
+
+    tracing::info!("Generated {} batches from {} records", batches.len(), max);
+
+    Ok(batches)
+}
+
+pub async fn generate_record_batches(
+    schema: Arc<arrow_schema::Schema>,
+    max: u64,
+) -> anyhow::Result<Vec<RecordBatch>> {
+    let batch_size = 100_000;
+    let mut batches = Vec::new();
+
     let mut ids = vec![];
     let mut customer_ids = vec![];
     let mut amounts = vec![];
     let mut tss = vec![];
 
     let mut rng = rand::rng();
+    let mut generated = 0;
 
-    for _ in 0..max {
-        let random_day = rng.random_range(1..=31); // 1 to 31 inclusive
-        let date = NaiveDate::from_ymd_opt(2025, 5, random_day).unwrap();
-        let time = NaiveTime::from_hms_opt(10, 0, 0).unwrap();
-        let dt = NaiveDateTime::new(date, time);
-        let ts = dt.and_utc().timestamp_micros();
+    while generated < max {
+        ids.clear();
+        customer_ids.clear();
+        amounts.clear();
+        tss.clear();
 
-        ids.push(rng.random_range(1..10_000_000));
-        customer_ids.push(rng.random_range(1..10_000_000));
-        amounts.push(rng.random_range(0.1..100.0));
-        tss.push(ts);
+        let current_batch_size = min(batch_size as u64, max - generated) as usize;
+
+        for _ in 0..current_batch_size {
+            let random_day = rng.random_range(1..=31); // 1 to 31 inclusive
+            let date = NaiveDate::from_ymd_opt(2025, 5, random_day).unwrap();
+            let time = NaiveTime::from_hms_opt(10, 0, 0).unwrap();
+            let dt = NaiveDateTime::new(date, time);
+            let ts = dt.and_utc().timestamp_micros();
+
+            ids.push(rng.random_range(1..10_000_000));
+            customer_ids.push(rng.random_range(1..10_000_000));
+            amounts.push(rng.random_range(0.1..100.0));
+            tss.push(ts);
+        }
+
+        let batch = RecordBatch::try_new(
+            schema.clone(),
+            vec![
+                Arc::new(Int32Array::from(ids.clone())),
+                Arc::new(Int32Array::from(customer_ids.clone())),
+                Arc::new(Float32Array::from(amounts.clone())),
+                Arc::new(TimestampMicrosecondArray::from(tss.clone())),
+            ],
+        )?;
+
+        batches.push(batch);
+        generated += current_batch_size as u64;
     }
-
-    let batch = RecordBatch::try_new(
-        schema.clone(),
-        vec![
-            Arc::new(Int32Array::from(ids)),
-            Arc::new(Int32Array::from(customer_ids)),
-            Arc::new(Float32Array::from(amounts)),
-            Arc::new(TimestampMicrosecondArray::from(tss)),
-        ],
-    )?;
 
     tracing::info!("Generated {max} records");
 
-    Ok(batch)
+    Ok(batches)
 }
