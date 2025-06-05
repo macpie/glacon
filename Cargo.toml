@@ -6,6 +6,7 @@ edition = "2024"
 
 [dependencies]
 anyhow = "1.0"
+apache-avro = "0.18"
 arrow = "55"
 arrow-schema = "55"
 bytes = "1.10"

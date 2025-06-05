@@ -28,20 +28,32 @@ async fn update_table(&self, _commit: TableCommit) -> Result<Table> {
 ## Spark
 
 ```sql
-CREATE TABLE db1.table1
+CREATE TABLE namespace1.orders2
 (
-  id bigint,
-  customer_id bigint,
-  amount DECIMAL(10, 2),
+  id INT,
+  customer_id INT,
+  amount FLOAT,
   ts TIMESTAMP
 )
-PARTITIONED BY ( hour(ts));
+PARTITIONED BY ( days(ts));
 
-INSERT INTO namespace1.orders
+INSERT INTO namespace1.orders2
+SELECT id, customer_id, amount, ts FROM namespace1.orders;
+
+INSERT INTO namespace1.orders2
 VALUES (
     123,
     456,
     36.17,
     TIMESTAMP '2025-10-01 12:00:00'
 );
+
+SELECT COUNT(*)
+FROM namespace1.orders
+WHERE ts > TIMESTAMP '2025-05-20 00:00:00';
+
+SELECT COUNT(*)
+FROM namespace1.orders2
+WHERE ts > TIMESTAMP '2025-05-20 00:00:00';
+
 ```

@@ -1,0 +1,130 @@
+services:
+  risingwave:
+    image: risingwavelabs/risingwave:latest
+    container_name: risingwave
+    networks:
+      risingwave_net:
+    ports:
+      - 4566:4566
+      - 5690:5690
+      - 5691:5691
+      - 6660:6660
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      minio-setup:
+        condition: service_completed_successfully
+    command: "
+      standalone \
+        --meta-opts=\" \
+          --listen-addr 0.0.0.0:5690 \
+          --advertise-addr 0.0.0.0:5690 \
+          --dashboard-host 0.0.0.0:5691 \
+          --backend sql \
+          --sql-endpoint postgres://postgres:postgres@postgres:5432/metadata \
+          --state-store hummock+minio://minioadmin:minioadmin@minio:9000/hummock001 \
+          --data-directory hummock_001 \" \
+        --compute-opts=\" \
+          --listen-addr 0.0.0.0:5688 \
+          --advertise-addr 0.0.0.0:5688 \
+          --async-stack-trace verbose \
+          --parallelism 8 \
+          --total-memory-bytes 16749006848 \
+          --role both \
+          --meta-address http://0.0.0.0:5690 \
+          --memory-manager-target-bytes 16749006848 \" \
+        --frontend-opts=\" \
+          --listen-addr 0.0.0.0:4566 \
+          --advertise-addr 0.0.0.0:4566 \
+          --meta-addr http://0.0.0.0:5690 \" \
+        --compactor-opts=\" \
+          --listen-addr 0.0.0.0:6660 \
+          --advertise-addr 0.0.0.0:6660 \
+          --meta-address http://0.0.0.0:5690 \
+          --compactor-total-memory-bytes=4294967296\"
+      "
+  rest:
+    platform: linux/amd64
+    image: apache/iceberg-rest-fixture
+    networks:
+      risingwave_net:
+    environment:
+      - AWS_ACCESS_KEY_ID=minioadmin
+      - AWS_SECRET_ACCESS_KEY=minioadmin
+      - AWS_REGION=us-east-1
+      - CATALOG_WAREHOUSE=s3://warehouse/
+      - CATALOG_IO__IMPL=org.apache.iceberg.aws.s3.S3FileIO
+      - CATALOG_S3_ENDPOINT=http://minio:9000
+    ports:
+      - 8181:8181
+  minio:
+    image: minio/minio
+    networks:
+      risingwave_net:
+        aliases:
+          - warehouse.minio
+    environment:
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin
+      - MINIO_REGION_NAME=us-east-1
+    ports:
+      - 9001:9001
+      - 9000:9000
+    volumes:
+      - minio_data:/data
+    command: ["server", "/data", "--address", ":9000", "--console-address", ":9001"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/ready"]
+      interval: 1s
+      timeout: 5s
+      retries: 5
+
+  minio-setup:
+    image: minio/mc
+    networks:
+      risingwave_net:
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      - AWS_ACCESS_KEY_ID=minioadmin
+      - AWS_SECRET_ACCESS_KEY=minioadmin
+      - AWS_REGION=us-east-1
+    entrypoint: >
+      /bin/sh -c "
+        until (mc config host add minio http://minio:9000 minioadmin minioadmin) do echo '...waiting...' && sleep 1; done;
+        mc mb minio/warehouse;
+        mc anonymous set public minio/warehouse;
+        mc mb minio/hummock001;
+        mc anonymous set public minio/hummock001;
+        mc mb minio/public;
+        mc anonymous set public minio/public;
+      "
+  postgres:
+    image: postgres:15-alpine
+    networks:
+      risingwave_net:
+    ports:
+      - 5432:5432
+    environment:
+      - POSTGRES_HOST_AUTH_METHOD=trust
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=metadata
+      - POSTGRES_INITDB_ARGS=--encoding=UTF-8 --lc-collate=C --lc-ctype=C
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      interval: 2s
+      timeout: 5s
+      retries: 5
+
+networks:
+  risingwave_net:
+
+volumes:
+  minio_data:
+  postgres_data:

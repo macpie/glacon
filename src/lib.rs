@@ -33,7 +33,7 @@ pub async fn setup(namespace: String, table_name: String) -> anyhow::Result<Rest
         .expect("could not build schema");
 
     let unbound_partition_spec = UnboundPartitionSpec::builder()
-        .add_partition_field(4, "by-day", Transform::Day)
+        .add_partition_field(4, "ts_day", Transform::Day)
         .expect("could not add partition field")
         .build();
 
