@@ -866,29 +866,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "04d2cd9c18b9f454ed67da600630b021a8a80bf33f8c95896ab33aaf1c26b728"
 
 [[package]]
-name = "data-project"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "apache-avro 0.18.0",
- "arrow",
- "arrow-schema",
- "bytes",
- "chrono",
- "iceberg",
- "iceberg-catalog-rest",
- "iceberg-catalog-sql",
- "parquet",
- "rand 0.9.1",
- "reqwest",
- "serde_json",
- "tokio",
- "tracing",
- "tracing-subscriber",
- "uuid",
-]
-
-[[package]]
 name = "der"
 version = "0.7.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1280,6 +1257,29 @@ name = "gimli"
 version = "0.31.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "07e28edb80900c19c28f1072f2e8aeca7fa06b23cd4169cefe1af5aa3260783f"
+
+[[package]]
+name = "glacon"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "apache-avro 0.18.0",
+ "arrow",
+ "arrow-schema",
+ "bytes",
+ "chrono",
+ "iceberg",
+ "iceberg-catalog-rest",
+ "iceberg-catalog-sql",
+ "parquet",
+ "rand 0.9.1",
+ "reqwest",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
+]
 
 [[package]]
 name = "gloo-timers"

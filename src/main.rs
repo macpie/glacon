@@ -1,4 +1,4 @@
-use data_project::{
+use glacon::{
     data::{Order, create_batches, insert},
     setup,
 };
@@ -25,18 +25,19 @@ async fn main() -> anyhow::Result<()> {
         loop {
             let mut orders = vec![];
 
-            for _ in 0..rng.random_range(1..1_000_000) {
+            for _ in 0..rng.random_range(10_000_000..10_000_001) {
                 orders.push(Order::generate());
             }
 
             tx1.send(orders).unwrap();
 
-            sleep(Duration::from_secs(rng.random_range(1..5)));
+            sleep(Duration::from_secs(rng.random_range(3..5)));
         }
     });
 
     while let Some(orders) = rx.recv().await {
-        tracing::info!("got {} orders", orders.len());
+        let total = orders.len();
+        tracing::info!("got {} orders", total);
 
         let catalog = catalog_ref.clone();
         let table = catalog
@@ -52,6 +53,8 @@ async fn main() -> anyhow::Result<()> {
         let batches = create_batches(schema, orders).await?;
 
         insert(&catalog, table, batches).await?;
+
+        tracing::info!("All done with {} orders", total);
     }
 
     Ok(())

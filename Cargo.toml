@@ -1,8 +1,9 @@
 [package]
-name = "data-project"
+name = "glacon"
 version = "0.1.0"
 description = ""
 edition = "2024"
+default-run = "glacon"
 
 [dependencies]
 anyhow = "1.0"

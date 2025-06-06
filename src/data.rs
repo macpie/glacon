@@ -100,7 +100,7 @@ pub async fn create_batches(
     schema: Arc<arrow_schema::Schema>,
     orders: Vec<Order>,
 ) -> anyhow::Result<Vec<RecordBatch>> {
-    let batch_size = 100_000;
+    let batch_size = 100_000_000;
     let mut batches = Vec::new();
 
     let max = orders.len();
