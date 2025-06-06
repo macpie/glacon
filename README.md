@@ -28,7 +28,7 @@ async fn update_table(&self, _commit: TableCommit) -> Result<Table> {
 ## Spark
 
 ```sql
-CREATE TABLE namespace1.orders3
+CREATE TABLE namespace.orders1
 (
   id INT NOT NULL,
   customer_id INT NOT NULL,
@@ -37,10 +37,10 @@ CREATE TABLE namespace1.orders3
 )
 PARTITIONED BY ( days(ts));
 
-INSERT INTO namespace1.orders3
-SELECT id, customer_id, amount, ts FROM namespace1.orders;
+INSERT INTO namespace.orders1
+SELECT id, customer_id, amount, ts FROM namespace.orders;
 
-INSERT INTO namespace1.orders3
+INSERT INTO namespace.orders1
 VALUES (
     123,
     456,
@@ -49,11 +49,40 @@ VALUES (
 );
 
 SELECT COUNT(*)
-FROM namespace1.orders
+FROM namespace.orders
 WHERE ts > TIMESTAMP '2025-05-20 00:00:00';
 
 SELECT COUNT(*)
-FROM namespace1.orders3
+FROM namespace.orders1
 WHERE ts > TIMESTAMP '2025-05-20 00:00:00';
 
+```
+
+### 2x partition
+
+```sql
+CREATE TABLE namespace.orders
+(
+  id INT NOT NULL,
+  customer_id INT NOT NULL,
+  amount FLOAT NOT NULL,
+  ts TIMESTAMP NOT NULL
+)
+PARTITIONED BY ( days(ts), customer_id);
+
+INSERT INTO namespace.orders
+VALUES (
+    43254,
+    456,
+    36.17,
+    TIMESTAMP '2025-10-01 12:00:00'
+);
+
+INSERT INTO namespace.orders
+VALUES (
+    1231,
+    789,
+    36.17,
+    TIMESTAMP '2025-10-02 12:00:00'
+);
 ```

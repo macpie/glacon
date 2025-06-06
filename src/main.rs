@@ -1,18 +1,19 @@
-use glacon::{
-    data::{Order, create_batches, insert},
-    setup,
-};
+use glacon::{create_batches_by_day, insert, order::Order, setup};
 use iceberg::{Catalog, TableIdent};
 use rand::Rng;
-use std::{sync::Arc, thread::sleep, time::Duration};
+use std::{env, sync::Arc, thread::sleep, time::Duration};
 use tokio::{sync::mpsc, task};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt::init();
 
-    let namespace = "namespace1".to_string();
-    let table_name = "orders".to_string();
+    let args = env::args().collect::<Vec<_>>();
+
+    let namespace_default = "namespace".to_string();
+    let namespace = args.get(1).unwrap_or(&namespace_default);
+    let table_name_default = "orders".to_string();
+    let table_name = args.get(2).unwrap_or(&table_name_default);
     let catalog = setup(namespace.clone(), table_name.clone()).await?;
     let catalog_ref = Arc::new(catalog);
 
@@ -31,7 +32,7 @@ async fn main() -> anyhow::Result<()> {
 
             tx1.send(orders).unwrap();
 
-            sleep(Duration::from_secs(rng.random_range(3..5)));
+            sleep(Duration::from_secs(rng.random_range(10..30)));
         }
     });
 
@@ -50,7 +51,7 @@ async fn main() -> anyhow::Result<()> {
 
         let schema: Arc<arrow_schema::Schema> =
             Arc::new(table.metadata().current_schema().as_ref().try_into()?);
-        let batches = create_batches(schema, orders).await?;
+        let batches = create_batches_by_day(schema, orders).await?;
 
         insert(&catalog, table, batches).await?;
 

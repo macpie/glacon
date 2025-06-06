@@ -17,7 +17,7 @@ async fn main() -> anyhow::Result<()> {
     for file_name in files {
         let read_file = File::open(file_name.clone())?;
         let reader = Reader::new(read_file)?;
-        let write_file = File::create(format!("{}.json", file_name))?;
+        let write_file = File::create(format!("{}.json", file_name.clone()))?;
 
         let mut data = vec![];
         for v in reader {
@@ -28,7 +28,9 @@ async fn main() -> anyhow::Result<()> {
 
         serde_json::to_writer_pretty(write_file, &data)?;
 
-        tracing::info!("Read file {}", file_name);
+        fs::remove_file(file_name.clone())?;
+
+        tracing::info!("Done with file {}", file_name);
     }
 
     Ok(())
