@@ -1268,6 +1268,7 @@ dependencies = [
  "arrow-schema",
  "bytes",
  "chrono",
+ "futures",
  "iceberg",
  "iceberg-catalog-rest",
  "iceberg-catalog-sql",
