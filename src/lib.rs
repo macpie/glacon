@@ -1,31 +1,27 @@
-use crate::order::Order;
+use crate::{order::Order, partitioned_location_generator::PartitionedLocationGenerator};
 use arrow::array::{Float32Array, Int32Array, RecordBatch, TimestampMicrosecondArray};
 use chrono::Datelike;
 use iceberg::{
     Catalog, NamespaceIdent, TableCreation, TableIdent,
     spec::{
-        Literal, NestedField, PrimitiveType, Schema, Struct, Transform, Type, UnboundPartitionSpec,
+        Literal, NestedField, PrimitiveType, Schema, Struct, Transform, Type,
+        UnboundPartitionField, UnboundPartitionSpec,
     },
     table::Table,
     transaction::Transaction,
     writer::{
         IcebergWriter, IcebergWriterBuilder,
         base_writer::data_file_writer::DataFileWriterBuilder,
-        file_writer::{
-            ParquetWriterBuilder,
-            location_generator::{DefaultFileNameGenerator, DefaultLocationGenerator},
-        },
+        file_writer::{ParquetWriterBuilder, location_generator::DefaultFileNameGenerator},
     },
 };
 use iceberg_catalog_rest::{RestCatalog, RestCatalogConfig};
 use parquet::file::properties::WriterProperties;
-use std::{
-    collections::{BTreeMap, HashMap},
-    sync::Arc,
-};
+use std::{collections::HashMap, sync::Arc};
 use uuid::Uuid;
 
 pub mod order;
+pub mod partitioned_location_generator;
 
 pub async fn setup(namespace: String, table_name: String) -> anyhow::Result<RestCatalog> {
     let catalog_cfg = RestCatalogConfig::builder()
@@ -48,13 +44,27 @@ pub async fn setup(namespace: String, table_name: String) -> anyhow::Result<Rest
             NestedField::required(2, "customer_id", Type::Primitive(PrimitiveType::Int)).into(),
             NestedField::required(3, "amount", Type::Primitive(PrimitiveType::Float)).into(),
             NestedField::required(4, "ts", Type::Primitive(PrimitiveType::Timestamp)).into(),
+            NestedField::required(5, "order_type", Type::Primitive(PrimitiveType::Int)).into(),
         ])
         .build()
         .expect("could not build schema");
 
     let unbound_partition_spec = UnboundPartitionSpec::builder()
-        .add_partition_field(4, "ts_day", Transform::Day)
-        .expect("could not add partition field")
+        .add_partition_fields(vec![
+            UnboundPartitionField {
+                source_id: 4,
+                field_id: None,
+                name: "ts_day".to_string(),
+                transform: Transform::Day,
+            },
+            UnboundPartitionField {
+                source_id: 5,
+                field_id: None,
+                name: "type".to_string(),
+                transform: Transform::Identity,
+            },
+        ])
+        .expect("could not add partition fields")
         .build();
 
     let partition_spec = unbound_partition_spec
@@ -88,12 +98,19 @@ pub async fn setup(namespace: String, table_name: String) -> anyhow::Result<Rest
 pub async fn insert(
     catalog: &RestCatalog,
     table: Table,
-    batches: Vec<(u32, RecordBatch)>,
+    batches: HashMap<Vec<u32>, RecordBatch>,
 ) -> anyhow::Result<()> {
     let mut data_files = vec![];
 
-    for (day, batch) in batches {
-        let location_generator = DefaultLocationGenerator::new(table.metadata().clone())?;
+    for (key, batch) in batches {
+        let partition_spec_id = 0;
+
+        let part_values = key.clone().iter().map(|v| v.to_string()).collect();
+        let location_generator = PartitionedLocationGenerator::new(
+            table.metadata().clone(),
+            partition_spec_id,
+            part_values,
+        )?;
 
         let table_name = table.identifier().name();
 
@@ -111,10 +128,15 @@ pub async fn insert(
             file_name_generator.clone(),
         );
 
+        let partition_values: Vec<Option<Literal>> = key
+            .iter()
+            .map(|v| Some(Literal::int(v.clone() as i32)))
+            .collect();
+
         let data_file_writer_builder = DataFileWriterBuilder::new(
             parquet_writer_builder,
-            Some(Struct::from_iter([Some(Literal::int(day as i32))])),
-            0,
+            Some(Struct::from_iter(partition_values)),
+            partition_spec_id,
         );
         let data_file_writer_builder = data_file_writer_builder.clone();
         let mut data_file_writer = data_file_writer_builder.build().await?;
@@ -134,34 +156,36 @@ pub async fn insert(
     Ok(())
 }
 
-pub async fn create_batches_by_day(
+pub async fn create_partitioned_batches(
     schema: Arc<arrow_schema::Schema>,
     orders: Vec<Order>,
-) -> anyhow::Result<Vec<(u32, RecordBatch)>> {
-    let mut day_groups: BTreeMap<u32, Vec<&Order>> = BTreeMap::new();
+) -> anyhow::Result<HashMap<Vec<u32>, RecordBatch>> {
+    let mut partitioned: HashMap<Vec<u32>, Vec<&Order>> = HashMap::new();
 
-    // Group orders by day of month
     for order in &orders {
         let day = order.ts.day();
-        day_groups.entry(day).or_default().push(order);
+        let t = order.order_type;
+        let key = vec![day, t];
+        partitioned.entry(key).or_default().push(order);
     }
 
-    // Convert each group into a RecordBatch
-    let mut batches = Vec::new();
+    let mut batches: HashMap<Vec<u32>, RecordBatch> = HashMap::new();
 
-    for (day, group) in day_groups {
-        let size = group.len();
+    for (key, orders) in partitioned {
+        let size = orders.len();
 
         let mut ids = Vec::with_capacity(size);
         let mut customer_ids = Vec::with_capacity(size);
         let mut amounts = Vec::with_capacity(size);
         let mut tss = Vec::with_capacity(size);
+        let mut types = Vec::with_capacity(size);
 
-        for order in group {
+        for order in orders {
             ids.push(order.id as i32);
             customer_ids.push(order.customer_id as i32);
             amounts.push(order.amount);
             tss.push(order.ts.timestamp_micros());
+            types.push(order.order_type as i32);
         }
 
         let batch = RecordBatch::try_new(
@@ -171,63 +195,19 @@ pub async fn create_batches_by_day(
                 Arc::new(Int32Array::from(customer_ids)),
                 Arc::new(Float32Array::from(amounts)),
                 Arc::new(TimestampMicrosecondArray::from(tss)),
+                Arc::new(Int32Array::from(types)),
             ],
         )?;
 
-        batches.push((day, batch));
-        tracing::info!("Generated {} records for day {} ", size, day);
+        batches.insert(key.clone(), batch);
+        tracing::info!("Generated {} records for batch {:?} ", size, key);
     }
 
     tracing::info!(
-        "Generated {} day-based batches from {} records",
+        "Generated {} partitioned batches from {} records",
         batches.len(),
         orders.len()
     );
-
-    Ok(batches)
-}
-
-pub async fn create_batches_by_size(
-    schema: Arc<arrow_schema::Schema>,
-    orders: Vec<Order>,
-) -> anyhow::Result<Vec<RecordBatch>> {
-    let batch_size = 100_000_000;
-    let mut batches = Vec::new();
-
-    let max = orders.len();
-    let mut start = 0;
-
-    while start < max {
-        let end = usize::min(start + batch_size, max);
-        let chunk = &orders[start..end];
-
-        let mut ids = Vec::with_capacity(chunk.len());
-        let mut customer_ids = Vec::with_capacity(chunk.len());
-        let mut amounts = Vec::with_capacity(chunk.len());
-        let mut tss = Vec::with_capacity(chunk.len());
-
-        for order in chunk {
-            ids.push(order.id as i32);
-            customer_ids.push(order.customer_id as i32);
-            amounts.push(order.amount);
-            tss.push(order.ts.timestamp_micros());
-        }
-
-        let batch = RecordBatch::try_new(
-            schema.clone(),
-            vec![
-                Arc::new(Int32Array::from(ids)),
-                Arc::new(Int32Array::from(customer_ids)),
-                Arc::new(Float32Array::from(amounts)),
-                Arc::new(TimestampMicrosecondArray::from(tss)),
-            ],
-        )?;
-
-        batches.push(batch);
-        start = end;
-    }
-
-    tracing::info!("Generated {} batches from {} records", batches.len(), max);
 
     Ok(batches)
 }

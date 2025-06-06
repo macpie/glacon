@@ -6,6 +6,7 @@ pub struct Order {
     pub customer_id: u32,
     pub amount: f32,
     pub ts: DateTime<Utc>,
+    pub order_type: u32,
 }
 
 impl Order {
@@ -25,6 +26,7 @@ impl Order {
             customer_id: rng.random_range(1..10_000_000),
             amount: rng.random_range(1.0..10000.0),
             ts,
+            order_type: rng.random_range(1..4),
         }
     }
 }

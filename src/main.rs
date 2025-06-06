@@ -1,4 +1,4 @@
-use glacon::{create_batches_by_day, insert, order::Order, setup};
+use glacon::{create_partitioned_batches, insert, order::Order, setup};
 use iceberg::{Catalog, TableIdent};
 use rand::Rng;
 use std::{env, sync::Arc, thread::sleep, time::Duration};
@@ -51,7 +51,7 @@ async fn main() -> anyhow::Result<()> {
 
         let schema: Arc<arrow_schema::Schema> =
             Arc::new(table.metadata().current_schema().as_ref().try_into()?);
-        let batches = create_batches_by_day(schema, orders).await?;
+        let batches = create_partitioned_batches(schema, orders).await?;
 
         insert(&catalog, table, batches).await?;
 
