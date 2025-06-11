@@ -57,7 +57,7 @@ pub async fn setup(namespace: String, table_name: String) -> anyhow::Result<Rest
             source_id: 4,
             field_id: None,
             name: "ts_day".to_string(),
-            transform: Transform::day,
+            transform: Transform::Day,
         }])
         .expect("could not add partition fields")
         .build();
