@@ -1,4 +1,5 @@
 use chrono::Local;
+use dotenv::dotenv;
 use glacon::{create_partitioned_batches, insert, order::Order, setup};
 use iceberg::{Catalog, TableIdent};
 use rand::Rng;
@@ -7,6 +8,7 @@ use tokio::{sync::mpsc, task};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    dotenv().ok();
     tracing_subscriber::fmt::init();
 
     let args = env::args().collect::<Vec<_>>();

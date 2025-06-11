@@ -950,6 +950,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "dotenv"
+version = "0.15.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "77c90badedccf4105eca100756a0b1289e191f6fcbdadd3cee1d2f614f97da8f"
+
+[[package]]
 name = "dotenvy"
 version = "0.15.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1268,6 +1274,7 @@ dependencies = [
  "arrow-schema",
  "bytes",
  "chrono",
+ "dotenv",
  "futures",
  "iceberg",
  "iceberg-catalog-rest",
@@ -1554,7 +1561,7 @@ dependencies = [
 [[package]]
 name = "iceberg"
 version = "0.5.1"
-source = "git+https://github.com/apache/iceberg-rust.git?branch=main#59948fc0fd273a16aac018d0f5ac8e219694cf6a"
+source = "git+https://github.com/apache/iceberg-rust.git?branch=main#44cd71861a02259d46f2c8e51a6d33ccc0a783b6"
 dependencies = [
  "anyhow",
  "apache-avro 0.17.0",
@@ -1604,7 +1611,7 @@ dependencies = [
 [[package]]
 name = "iceberg-catalog-rest"
 version = "0.5.1"
-source = "git+https://github.com/apache/iceberg-rust.git?branch=main#59948fc0fd273a16aac018d0f5ac8e219694cf6a"
+source = "git+https://github.com/apache/iceberg-rust.git?branch=main#44cd71861a02259d46f2c8e51a6d33ccc0a783b6"
 dependencies = [
  "async-trait",
  "chrono",
@@ -1624,7 +1631,7 @@ dependencies = [
 [[package]]
 name = "iceberg-catalog-sql"
 version = "0.5.1"
-source = "git+https://github.com/apache/iceberg-rust.git?branch=main#59948fc0fd273a16aac018d0f5ac8e219694cf6a"
+source = "git+https://github.com/apache/iceberg-rust.git?branch=main#44cd71861a02259d46f2c8e51a6d33ccc0a783b6"
 dependencies = [
  "async-trait",
  "iceberg",

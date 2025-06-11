@@ -12,6 +12,7 @@ arrow = "55"
 arrow-schema = "55"
 bytes = "1.10"
 chrono = "0.4.39"
+dotenv = "0.15"
 futures = "0.3"
 iceberg = { git = "https://github.com/apache/iceberg-rust.git", branch = "main" }
 iceberg-catalog-rest = { git = "https://github.com/apache/iceberg-rust.git", branch = "main" }
