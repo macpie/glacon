@@ -1,3 +1,4 @@
+use chrono::Local;
 use glacon::{create_partitioned_batches, insert, order::Order, setup};
 use iceberg::{Catalog, TableIdent};
 use rand::Rng;
@@ -10,10 +11,13 @@ async fn main() -> anyhow::Result<()> {
 
     let args = env::args().collect::<Vec<_>>();
 
-    let namespace_default = "namespace".to_string();
+    let now = Local::now().format("%Y_%m_%d_%H_%M_%S").to_string();
+    let namespace_default = format!("namespace_{}", now);
     let namespace = args.get(1).unwrap_or(&namespace_default);
+
     let table_name_default = "orders".to_string();
     let table_name = args.get(2).unwrap_or(&table_name_default);
+
     let catalog = setup(namespace.clone(), table_name.clone()).await?;
     let catalog_ref = Arc::new(catalog);
 
@@ -48,6 +52,7 @@ async fn main() -> anyhow::Result<()> {
             ])?)
             .await?;
         tracing::info!("Table loaded");
+        tracing::debug!("{:?}", table);
 
         let schema: Arc<arrow_schema::Schema> =
             Arc::new(table.metadata().current_schema().as_ref().try_into()?);

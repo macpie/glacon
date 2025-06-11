@@ -1,6 +1,6 @@
 use crate::{order::Order, partitioned_location_generator::PartitionedLocationGenerator};
 use arrow::array::{Float32Array, Int32Array, RecordBatch, TimestampMicrosecondArray};
-use chrono::Datelike;
+use chrono::{DateTime, Datelike, TimeZone, Utc};
 use iceberg::{
     Catalog, NamespaceIdent, TableCreation, TableIdent,
     spec::{
@@ -16,7 +16,10 @@ use iceberg::{
     },
 };
 use iceberg_catalog_rest::{RestCatalog, RestCatalogConfig};
-use parquet::file::properties::WriterProperties;
+use parquet::{
+    basic::{Compression, Encoding, ZstdLevel},
+    file::properties::WriterProperties,
+};
 use std::{collections::HashMap, sync::Arc};
 use uuid::Uuid;
 
@@ -50,20 +53,12 @@ pub async fn setup(namespace: String, table_name: String) -> anyhow::Result<Rest
         .expect("could not build schema");
 
     let unbound_partition_spec = UnboundPartitionSpec::builder()
-        .add_partition_fields(vec![
-            UnboundPartitionField {
-                source_id: 4,
-                field_id: None,
-                name: "ts_day".to_string(),
-                transform: Transform::Day,
-            },
-            UnboundPartitionField {
-                source_id: 5,
-                field_id: None,
-                name: "type".to_string(),
-                transform: Transform::Identity,
-            },
-        ])
+        .add_partition_fields(vec![UnboundPartitionField {
+            source_id: 4,
+            field_id: None,
+            name: "ts_day".to_string(),
+            transform: Transform::day,
+        }])
         .expect("could not add partition fields")
         .build();
 
@@ -98,19 +93,19 @@ pub async fn setup(namespace: String, table_name: String) -> anyhow::Result<Rest
 pub async fn insert(
     catalog: &RestCatalog,
     table: Table,
-    batches: HashMap<Vec<u32>, RecordBatch>,
+    batches: HashMap<Vec<DateTime<Utc>>, RecordBatch>,
 ) -> anyhow::Result<()> {
     let mut data_files = vec![];
 
-    for (key, batch) in batches {
+    for (part_values, batch) in batches {
         let partition_spec_id = 0;
 
-        let part_values = key.clone().iter().map(|v| v.to_string()).collect();
-        let location_generator = PartitionedLocationGenerator::new(
-            table.metadata().clone(),
-            partition_spec_id,
-            part_values,
-        )?;
+        let keys = part_values
+            .iter()
+            .map(|v| v.format("%Y-%m-%d").to_string())
+            .collect();
+        let location_generator =
+            PartitionedLocationGenerator::new(table.metadata().clone(), partition_spec_id, keys)?;
 
         let table_name = table.identifier().name();
 
@@ -121,16 +116,19 @@ pub async fn insert(
         );
 
         let parquet_writer_builder = ParquetWriterBuilder::new(
-            WriterProperties::default(),
+            WriterProperties::builder()
+                .set_encoding(Encoding::PLAIN)
+                .set_compression(Compression::ZSTD(ZstdLevel::try_new(11)?))
+                .build(),
             table.metadata().current_schema().clone(),
             table.file_io().clone(),
             location_generator.clone(),
             file_name_generator.clone(),
         );
 
-        let partition_values: Vec<Option<Literal>> = key
+        let partition_values: Vec<Option<Literal>> = part_values
             .iter()
-            .map(|v| Some(Literal::int(v.clone() as i32)))
+            .map(|v| Some(Literal::int(v.day() as i32)))
             .collect();
 
         let data_file_writer_builder = DataFileWriterBuilder::new(
@@ -159,17 +157,15 @@ pub async fn insert(
 pub async fn create_partitioned_batches(
     schema: Arc<arrow_schema::Schema>,
     orders: Vec<Order>,
-) -> anyhow::Result<HashMap<Vec<u32>, RecordBatch>> {
-    let mut partitioned: HashMap<Vec<u32>, Vec<&Order>> = HashMap::new();
+) -> anyhow::Result<HashMap<Vec<DateTime<Utc>>, RecordBatch>> {
+    let mut partitioned: HashMap<Vec<DateTime<Utc>>, Vec<&Order>> = HashMap::new();
 
     for order in &orders {
-        let day = order.ts.day();
-        let t = order.order_type;
-        let key = vec![day, t];
+        let key = vec![set_to_midnight(order.ts)];
         partitioned.entry(key).or_default().push(order);
     }
 
-    let mut batches: HashMap<Vec<u32>, RecordBatch> = HashMap::new();
+    let mut batches: HashMap<Vec<DateTime<Utc>>, RecordBatch> = HashMap::new();
 
     for (key, orders) in partitioned {
         let size = orders.len();
@@ -210,4 +206,10 @@ pub async fn create_partitioned_batches(
     );
 
     Ok(batches)
+}
+
+fn set_to_midnight(datetime: DateTime<Utc>) -> DateTime<Utc> {
+    let date = datetime.date_naive(); // Extracts the NaiveDate (Y-M-D)
+    Utc.with_ymd_and_hms(date.year(), date.month(), date.day(), 0, 0, 0)
+        .unwrap()
 }
