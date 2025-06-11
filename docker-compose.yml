@@ -1,39 +1,62 @@
 services:
-  spark-iceberg:
-    platform: linux/amd64
-    image: tabulario/spark-iceberg
-    build: spark/
+  # spark-iceberg:
+  #   platform: linux/amd64
+  #   image: tabulario/spark-iceberg
+  #   build: spark/
+  #   networks:
+  #     iceberg_net:
+  #   depends_on:
+  #     rest2:
+  #       condition: service_started
+  #     minio-setup:
+  #       condition: service_completed_successfully
+  #   environment:
+  #     - AWS_ACCESS_KEY_ID=admin
+  #     - AWS_SECRET_ACCESS_KEY=password
+  #     - AWS_REGION=us-east-1
+  #     - SPARK_SQL_EXTENSIONS=org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions
+  #     - SPARK_SQL_CATALOG_REST=org.apache.iceberg.spark.SparkCatalog
+  #     - SPARK_SQL_CATALOG_REST_CATALOG_IMPL=org.apache.iceberg.rest.RESTCatalog
+  #     - SPARK_SQL_CATALOG_REST_URI=http://rest2:9001/iceberg
+  #     - SPARK_SQL_CATALOG_REST_WAREHOUSE=s3://warehouse/
+  #     - SPARK_SQL_CATALOG_REST_IO_IMPL=org.apache.iceberg.aws.s3.S3FileIO
+  #     - SPARK_SQL_CATALOG_REST_S3_ENDPOINT=http://minio:9000
+  #     - SPARK_SQL_CATALOG_REST_S3_ACCESS_KEY_ID=admin
+  #     - SPARK_SQL_CATALOG_REST_S3_SECRET_ACCESS_KEY=password
+  #     - SPARK_SQL_CATALOG_REST_S3_PATH_STYLE_ACCESS=true
+  #   ports:
+  #     - 8888:8888
+  #     - 8080:8080
+  #     - 10000:10000
+  #     - 10001:10001
+
+  rest:
+    image: apache/gravitino-iceberg-rest:0.9.0-incubating
     networks:
       iceberg_net:
     depends_on:
-      - rest
-      - minio
+      minio-setup:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
     environment:
-      - AWS_ACCESS_KEY_ID=admin
-      - AWS_SECRET_ACCESS_KEY=password
-      - AWS_REGION=us-east-1
+      - GRAVITINO_AUX_SERVICES=iceberg-rest
+      - GRAVITINO_IO_IMPL=org.apache.iceberg.aws.s3.S3FileIO
+      - GRAVITINO_WAREHOUSE=s3://warehouse/
+      - GRAVITINO_S3_ENDPOINT=http://minio:9000
+      - GRAVITINO_S3_ACCESS_KEY=admin
+      - GRAVITINO_S3_SECRET_KEY=password
+      - GRAVITINO_S3_REGION=us-east-1
+      - GRAVITINO_CATALOG_BACKEND=jdbc
+      - GRAVITINO_URI=jdbc:postgresql://postgres:5432/postgres
+      - GRAVITINO_JDBC_DRIVER=org.postgresql.Driver
+      - GRAVITINO_JDBC_USER=postgres
+      - GRAVITINO_JDBC_PASSWORD=postgres
     ports:
-      - 8888:8888
-      - 8080:8080
-      - 10000:10000
-      - 10001:10001
+      - 8181:9001
     volumes:
-      - ./tmp/warehouse:/home/iceberg/warehouse
-      - ./tmp/notebooks:/home/iceberg/notebooks/notebooks
-  rest:
-    platform: linux/amd64
-    image: apache/iceberg-rest-fixture
-    networks:
-      iceberg_net:
-    environment:
-      - AWS_ACCESS_KEY_ID=admin
-      - AWS_SECRET_ACCESS_KEY=password
-      - AWS_REGION=us-east-1
-      - CATALOG_WAREHOUSE=s3://warehouse/
-      - CATALOG_IO__IMPL=org.apache.iceberg.aws.s3.S3FileIO
-      - CATALOG_S3_ENDPOINT=http://minio:9000
-    ports:
-      - 8181:8181
+    - ./gravitino/postgresql.jar:/root/gravitino-iceberg-rest-server/libs/postgresql.jar
+
   minio:
     image: minio/minio
     networks:
@@ -70,6 +93,8 @@ services:
       "
   postgres:
     image: postgres:16
+    networks:
+      iceberg_net:
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
@@ -78,6 +103,11 @@ services:
       - 5432:5432
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 2s
+      retries: 5
+
 networks:
   iceberg_net:
 

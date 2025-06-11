@@ -28,7 +28,7 @@ pub mod partitioned_location_generator;
 
 pub async fn setup(namespace: String, table_name: String) -> anyhow::Result<RestCatalog> {
     let catalog_cfg = RestCatalogConfig::builder()
-        .uri("http://localhost:8181".to_string())
+        .uri("http://localhost:8181/iceberg".to_string())
         .warehouse("warehouse".to_string())
         .build();
     let catalog = RestCatalog::new(catalog_cfg);
