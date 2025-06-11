@@ -1,34 +1,26 @@
 services:
-  # spark-iceberg:
-  #   platform: linux/amd64
-  #   image: tabulario/spark-iceberg
-  #   build: spark/
-  #   networks:
-  #     iceberg_net:
-  #   depends_on:
-  #     rest2:
-  #       condition: service_started
-  #     minio-setup:
-  #       condition: service_completed_successfully
-  #   environment:
-  #     - AWS_ACCESS_KEY_ID=admin
-  #     - AWS_SECRET_ACCESS_KEY=password
-  #     - AWS_REGION=us-east-1
-  #     - SPARK_SQL_EXTENSIONS=org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions
-  #     - SPARK_SQL_CATALOG_REST=org.apache.iceberg.spark.SparkCatalog
-  #     - SPARK_SQL_CATALOG_REST_CATALOG_IMPL=org.apache.iceberg.rest.RESTCatalog
-  #     - SPARK_SQL_CATALOG_REST_URI=http://rest2:9001/iceberg
-  #     - SPARK_SQL_CATALOG_REST_WAREHOUSE=s3://warehouse/
-  #     - SPARK_SQL_CATALOG_REST_IO_IMPL=org.apache.iceberg.aws.s3.S3FileIO
-  #     - SPARK_SQL_CATALOG_REST_S3_ENDPOINT=http://minio:9000
-  #     - SPARK_SQL_CATALOG_REST_S3_ACCESS_KEY_ID=admin
-  #     - SPARK_SQL_CATALOG_REST_S3_SECRET_ACCESS_KEY=password
-  #     - SPARK_SQL_CATALOG_REST_S3_PATH_STYLE_ACCESS=true
-  #   ports:
-  #     - 8888:8888
-  #     - 8080:8080
-  #     - 10000:10000
-  #     - 10001:10001
+  spark-iceberg:
+    platform: linux/amd64
+    image: tabulario/spark-iceberg
+    build: spark/
+    networks:
+      iceberg_net:
+    depends_on:
+      rest:
+        condition: service_healthy
+      minio-setup:
+        condition: service_completed_successfully
+    environment:
+      - AWS_ACCESS_KEY_ID=admin
+      - AWS_SECRET_ACCESS_KEY=password
+      - AWS_REGION=us-east-1
+    ports:
+      - 8888:8888
+      - 8080:8080
+      - 10000:10000
+      - 10001:10001
+    volumes:
+      - ./spark/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf
 
   rest:
     image: apache/gravitino-iceberg-rest:0.9.0-incubating
@@ -55,7 +47,13 @@ services:
     ports:
       - 8181:9001
     volumes:
-    - ./gravitino/postgresql.jar:/root/gravitino-iceberg-rest-server/libs/postgresql.jar
+      - ./gravitino/postgresql.jar:/root/gravitino-iceberg-rest-server/libs/postgresql.jar
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9001/iceberg/v1/config || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   minio:
     image: minio/minio
@@ -105,8 +103,10 @@ services:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
-      interval: 2s
+      interval: 10s
+      timeout: 5s
       retries: 5
+      start_period: 10s
 
 networks:
   iceberg_net:
