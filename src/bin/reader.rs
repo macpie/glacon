@@ -35,7 +35,7 @@ async fn main() -> anyhow::Result<()> {
 
     let mut x = 0;
 
-    while let Some(_) = stream.next().await {
+    while (stream.next().await).is_some() {
         x += 1;
     }
 

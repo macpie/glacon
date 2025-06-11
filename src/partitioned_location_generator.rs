@@ -36,7 +36,7 @@ impl PartitionedLocationGenerator {
 
         let mut partitions = vec![];
 
-        for (i, part_field) in part_fields.into_iter().enumerate() {
+        for (i, part_field) in part_fields.iter().enumerate() {
             partitions.push((part_field.name.clone(), part_values.get(i).unwrap().clone()));
         }
 

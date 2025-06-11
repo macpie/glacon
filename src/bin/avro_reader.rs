@@ -43,7 +43,7 @@ pub fn find_avro_files(dir: &str) -> std::io::Result<Vec<String>> {
         let entry = entry?;
         let path = entry.path();
 
-        if path.is_file() && path.extension().map_or(false, |ext| ext == "avro") {
+        if path.is_file() && path.extension().is_some_and(|ext| ext == "avro") {
             if let Some(path_str) = path.to_str() {
                 avro_files.push(path_str.to_string());
             }
