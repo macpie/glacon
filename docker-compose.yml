@@ -1,12 +1,10 @@
 services:
-  spark-iceberg:
-    platform: linux/amd64
-    image: tabulario/spark-iceberg
-    build: spark/
+  spark:
+    image: apache/spark:3.5.6-scala2.12-java17-python3-r-ubuntu
     networks:
       iceberg_net:
     depends_on:
-      rest:
+      catalog:
         condition: service_healthy
       minio-setup:
         condition: service_completed_successfully
@@ -21,8 +19,11 @@ services:
       - 10001:10001
     volumes:
       - ./spark/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf
+      - ./spark/events:/home/iceberg/spark-events
+      - ./spark/jars/:/opt/spark/extra-jars
+    command: ["tail", "-f", "/dev/null"]
 
-  rest:
+  catalog:
     image: apache/gravitino-iceberg-rest:0.9.0-incubating
     networks:
       iceberg_net:

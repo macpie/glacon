@@ -9,20 +9,6 @@ export AWS_SECRET_ACCESS_KEY=password
 export AWS_REGION=us-east-1
 ```
 
-## Issues
+## Spark
 
-1. Partitions are not in sub directories, see:
-   1. https://github.com/apache/iceberg-rust/pull/890
-   2. https://github.com/apache/iceberg-rust/issues/891
-   3. https://github.com/apache/iceberg-rust/pull/893
-2. SQL catalog not ready yet either
-```rust
-async fn update_table(&self, _commit: TableCommit) -> Result<Table> {
-   Err(Error::new(
-      ErrorKind::FeatureUnsupported,
-         "Updating a table is not supported yet",
-   ))
-}
-```
-
-
+`docker exec -it glacon-spark-1 /opt/spark/bin/spark-sql`
