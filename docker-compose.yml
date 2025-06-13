@@ -21,7 +21,9 @@ services:
       - ./spark/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf
       - ./spark/events:/home/iceberg/spark-events
       - ./spark/jars/:/opt/spark/extra-jars
-    command: ["tail", "-f", "/dev/null"]
+      - ./spark/scripts/:/opt/spark/sql-scripts
+      - ./spark/run-sql.sh:/opt/spark/run-sql.sh
+    entrypoint: ["/bin/bash", "-c", "/opt/spark/run-sql.sh && tail -f /dev/null"]
 
   catalog:
     image: apache/gravitino-iceberg-rest:0.9.0-incubating
@@ -87,8 +89,6 @@ services:
         until (mc config host add minio http://minio:9000 admin password) do echo '...waiting...' && sleep 1; done;
         mc mb minio/warehouse;
         mc anonymous set public minio/warehouse;
-        mc mb minio/tmp;
-        mc anonymous set public minio/tmp;
       "
   postgres:
     image: postgres:16

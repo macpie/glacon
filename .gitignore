@@ -3,3 +3,4 @@ tmp/
 .env
 spark/events
 spark/jars
+.DS_Store
