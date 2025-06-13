@@ -7,6 +7,7 @@ pub struct Order {
     pub amount: f32,
     pub ts: DateTime<Utc>,
     pub order_type: u32,
+    pub note: String,
 }
 
 impl Order {
@@ -27,6 +28,7 @@ impl Order {
             amount: rng.random_range(1.0..10000.0),
             ts,
             order_type: rng.random_range(1..4),
+            note: "".to_string(),
         }
     }
 }

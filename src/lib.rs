@@ -1,5 +1,5 @@
 use crate::{order::Order, partitioned_location_generator::PartitionedLocationGenerator};
-use arrow::array::{Float32Array, Int32Array, RecordBatch, TimestampMicrosecondArray};
+use arrow::array::{Float32Array, Int32Array, RecordBatch, StringArray, TimestampMicrosecondArray};
 use chrono::{DateTime, Datelike, TimeZone, Utc};
 use iceberg::{
     Catalog, NamespaceIdent, TableCreation, TableIdent,
@@ -48,6 +48,7 @@ pub async fn setup(namespace: String, table_name: String) -> anyhow::Result<Rest
             NestedField::required(3, "amount", Type::Primitive(PrimitiveType::Float)).into(),
             NestedField::required(4, "ts", Type::Primitive(PrimitiveType::Timestamp)).into(),
             NestedField::required(5, "order_type", Type::Primitive(PrimitiveType::Int)).into(),
+            NestedField::required(6, "note", Type::Primitive(PrimitiveType::String)).into(),
         ])
         .build()
         .expect("could not build schema");
@@ -175,6 +176,7 @@ pub async fn create_partitioned_batches(
         let mut amounts = Vec::with_capacity(size);
         let mut tss = Vec::with_capacity(size);
         let mut types = Vec::with_capacity(size);
+        let mut notes = Vec::with_capacity(size);
 
         for order in orders {
             ids.push(order.id as i32);
@@ -182,6 +184,7 @@ pub async fn create_partitioned_batches(
             amounts.push(order.amount);
             tss.push(order.ts.timestamp_micros());
             types.push(order.order_type as i32);
+            notes.push(order.note.clone());
         }
 
         let batch = RecordBatch::try_new(
@@ -192,6 +195,7 @@ pub async fn create_partitioned_batches(
                 Arc::new(Float32Array::from(amounts)),
                 Arc::new(TimestampMicrosecondArray::from(tss)),
                 Arc::new(Int32Array::from(types)),
+                Arc::new(StringArray::from(notes)),
             ],
         )?;
 
